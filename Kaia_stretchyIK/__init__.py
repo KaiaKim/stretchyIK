@@ -44,13 +44,12 @@ def parentIterate(parents, childs):
 
 ###------------------------------CLASS---------------------------------
 class stretchyIKMaker():
-    def __init__(self, chain, section=1, degree=3, prefix='', softCorner=True):
+    def __init__(self, chain, section=1, degree=3, prefix=''):
         self.chain = chain
         self.start = chain[0]
         self.end = chain[-1]
         self.span = section + 1
         self.degree = degree
-        self.softCorner = softCorner
         
         self.crv = prefix + 'spineIk_Crv'
         self.ikHand = prefix + 'spineIk'
@@ -67,14 +66,14 @@ class stretchyIKMaker():
         self.FKCtls = [d+'_FK_ctl' for d in nameRef]
         self.IKCtls = [d+'_IK_ctl' for d in nameRef]
         
-        '''
+
         self.createCrv()
         self.rebuildCrv()
         self.createIKHandle()
         self.clsOnCrv()
         self.ctlOnCls()
         self.connectCtl()
-        '''
+        self.ikTwist()
     
     def createCrv(self):
         posList = []
@@ -97,25 +96,26 @@ class stretchyIKMaker():
         mc.rename(ikNode[0],self.ikHand)
         mc.rename(ikNode[1],self.ikEff)
         
-    def clsOnCrv(self, softCorner=True):
+    def clsOnCrv(self):
         CVs = mc.ls(self.crv + '.cv[*]', fl=1)
-        
-        if self.softCorner == True:
-            clsTarget = [CVs[0:2]] + [c for c in CVs[2:-2]] + [CVs[-2],CVs[-1]]
-        elif self.softCorner == False:
-            clsTarget = [CVs[0], CVs[1:-1], CVs[-1]]
 
-        for cv, clus in zip(clsTarget, self.clsNodes):
-            mc.cluster(cv, n=clus, rel=True)
+        targs = (
+            [CVs[0:2]]
+            +[c for c in CVs[2:-2]]
+            +[[CVs[-2],CVs[-1]]]
+        )
 
+        for targ, clus in zip(targs, self.clsNodes):
+            mc.cluster(targ, n=clus, rel=True)
         
         mc.group(self.clsHandles,n=self.clsGrp)
     
     def ctlOnCls(self):
         
-        createCtlGrp(self.IKCtls, self.clsHandles, shape='square', size=8)
-        createCtlGrp(self.FKCtls, self.clsHandles, shape='circle', size=4)
-        
+        createCtlGrp(self.clsHandles, self.IKCtls, None, shape='square', size=1)
+        createCtlGrp(self.clsHandles, self.FKCtls, None, shape='circle', size=.7)
+        offsetCtls(self.IKCtls+self.FKCtls, r=(0,90,0), s=(1.5,1.5,2))
+  
         overrideColor(self.IKCtls, color='yellow')
         overrideColor(self.FKCtls, color='magenta')
         
@@ -123,45 +123,38 @@ class stretchyIKMaker():
         parentIterate(self.IKCtls, FKNul)
         
         IKNul=[d+'_nul' for d in self.IKCtls]
-        '''        
-        startOri = mc.getAttr(self.start+'.jointOrient')[0] #joint orient
-        endOri = mc.getAttr(self.end+'.jointOrient')[0]
-        midOri = (
-                    startOri[0]+endOri[0] /2,
-                    startOri[1]+endOri[1] /2,
-                    startOri[2]+endOri[2] /2
-                    )
+        FKNul=[d+'_nul' for d in self.FKCtls]
+        IKNul=[d+'_nul' for d in self.IKCtls]
         
-        
-        for i in range(len(IKNul)-2):
-            mc.rotate(midOri[0],midOri[1],midOri[2],IKNul[i+1])
-        mc.rotate(endOri[0],endOri[1],endOri[2],IKNul[-1])
-        '''
+        parentIterate(self.FKCtls, IKNul)
 
-        for i,nul in enumerate(IKNul):
-            print(nul)
+        for i,nul in enumerate(FKNul):
             ori = mc.orientConstraint(self.start,self.end,nul,mo=False)[0]
-            val = i /(len(IKNul)-1)
+            val = i /(len(FKNul)-1)
             mc.setAttr( '%s.%sW0'%(ori,self.start), 1-val )
             mc.setAttr( '%s.%sW1'%(ori,self.end), val )
             mc.delete(ori)
 
         
-        for i in range(len(IKNul)-1):
-            mc.parent(IKNul[i+1], self.IKCtls[i])
+        for i in range(len(FKNul)-1):
+            mc.parent(FKNul[i+1], self.FKCtls[i])
 
         
     def connectCtl(self):
         parentConstIterate(self.FKCtls, self.clsHandles)
 
+    def ikTwist(self):
+        mc.spaceLocator(n=self.upObj)
+        mc.parent(self.upObj,self.FKCtls[0]+'_orient', r=True)
+        mc.move(0,100,0,'tongue_upObj', ls=True)
+        mc.hide(self.upObj)
+        
+        mc.setAttr(self.ikHand+'.dTwistControlEnable', 1)
+        mc.setAttr(self.ikHand+'.dWorldUpType', 1)
+        mc.connectAttr(self.upObj+'.worldMatrix', self.ikHand+'.dWorldUpMatrix')
 
 ###------------------------------EXECUTE---------------------------------
-sel=mc.ls(sl=True)
-run01=stretchyIKMaker(sel,section=2,prefix='tongue_',degree=3,softCorner=True)
+if __name__ == "__main__":
+    sel=mc.ls(sl=True)
+    run01=stretchyIKMaker(sel,section=2,prefix='test_',degree=3)
 
-run01.createCrv()
-run01.rebuildCrv()
-run01.createIKHandle()
-run01.clsOnCrv()
-run01.ctlOnCls()
-run01.connectCtl()
